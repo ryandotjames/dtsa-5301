@@ -1,0 +1,239 @@
+---
+title: "NYPD Shooting Incidents by Time of Day"
+author: "DTSA 5301 Learner"
+date: "5/24/2021"
+output: html_document
+---
+
+# Project Step 1: Start a Document and Load NYPD Data
+
+First, we call the "tidyverse" package from library.
+
+```{r call package, echo = TRUE}
+library(tidyverse)
+library(lubridate)
+```
+
+Then we load our dataset. This comes from an open and free website, with the link called below, with the CSV loaded into our dataframe.
+
+```{r load data, echo = TRUE}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv"
+NYPD_data <- read_csv(url_in)
+```
+
+
+
+## Summary of these Data
+
+First, let's take a look at what's going on in this dataset, starting with the column names.
+
+```{r column names, echo = TRUE, eval = TRUE}
+names(NYPD_data)
+```
+
+As we can see, there are 19 columns in our dataset. Now let's get a look at some summary statistics for these data.
+
+```{r data summary, echo = TRUE, eval = TRUE}
+summary(NYPD_data)
+```
+
+For the sake of clarity for this analysis, we're really going to focus on TIME as a big component for these data. Namely, the time of day which incidents occur, with the acknowledged understanding that other variables may be helful in investigating interactions. For our specific case, it doesn't look like we're going to be dealing with any missing data, given the small scope of our analysis. 
+
+So with that in mind, I'm going to make some changes to the dataset to make it easier to work with.
+
+* The variable "OCCUR_TIME" could be useful, but includes a seconds portion which should be deleted/trimmed.
+* The variable "OCCUR_DATE" is currently a character variable, which needs to be converted into a date variable.
+* We're going to delete a few more variables that we just won't worry about in this simple analysis:
+** JURISDICTION_CODE (the range suggests there isn't a lot of insight here, especially without knowning more about the variable itself)
+** LOCATION_DESC (many missing values)
+** STATISTICAL_MURDER_FLAG
+** PERP_AGE_GROUP
+** PERP_SEX
+** PERP_RACE
+** VIC_AGE_GROUP
+** VIC_SEX
+** VIC_RACE
+** As well as the five variables having to do with coordinates.
+* I will make a bit more clear in the "bias" section of this report why I'm taking out the "Perp" and "Vic" variables so early in the analysis.
+
+# Project Step #2: Tidy and Transform Data
+
+## Trimming Dimensions of the Data, Adding a New Column
+So after making the previous decisions, we're going to trim down our dataset horizontally by un-selecting the columns we don't want using the subset() tool, and read this into a new dataframe called 'NYPD_data_simpl'. Finally, we're also going to create a new column called "HOUR", which we'll primarily use for our visualizations below. It is based on the field "OCCUR_TIME" and uses the substring tool to read the hour alone as an integer.
+
+```{r tidy the data, echo = TRUE, eval = TRUE}
+NYPD_data_simpl <- subset(NYPD_data, select = -c(JURISDICTION_CODE, LOCATION_DESC, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+NYPD_data_simpl$HOUR <- c(as.numeric(substr(NYPD_data$OCCUR_TIME, 1, 2)))
+dates <- as.POSIXct(NYPD_data$OCCUR_DATE, format = "%m/%d/%Y")
+NYPD_data_simpl$YEAR <- format(dates, format="%Y")
+NYPD_data_simpl$MONTH <- c(as.numeric(substr(NYPD_data$OCCUR_DATE, 1, 2)))
+names(NYPD_data_simpl)
+```
+
+It looks like we're only returning six columns now, so we're set to begin generating some visualizations.
+
+# Project Step 3: Visualizations and Analysis
+
+## First Visualization: Time of Day
+First, we want to look at when incidents happen throughout the day. Because we aren't actually so interested in *which* day we're looking at right now, there's fewer transformations we have to do.
+
+```{r first scatter plot, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+attach(NYPD_data_simpl)
+plot(NYPD_data_simpl$OCCUR_TIME, NYPD_data_simpl$INCIDENT_KEY, main="Time of Day Scatter Plot", xlab="Time of Day", ylab = "Incident Occurs")
+```
+
+Well, that isn't entirely helpful. What's going on here?
+First, let's generate another visualization, but instead of a scatter plot, we're going to use a histogram to show how many incidents occur by hour, using our new calculated field.
+
+```{r first histogram, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+attach(NYPD_data_simpl)
+hist(NYPD_data_simpl$HOUR, main="Time of Day Histogram", xlab="Time of Day", ylab = "Incident Occurs")
+```
+
+This is close... but let's make it look a little prettier. To finish out this first visualizaiton, we're going to give better names for everything, make sure our axes reach the right levels, and add some color.
+
+
+```{r better histogram, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+attach(NYPD_data_simpl)
+hist(HOUR, main="NYPD Incidents by Day, 2006 - 2020", xlab="Hour of Day", ylab = "Number of Incidents Per Hour", col = "dark blue", border = "yellow", breaks = 24, ylim = c(0, 4000), xlim = c(0, 24), xaxp = c(0, 24, 12))
+```
+
+Now we're getting somewhere!
+
+Let's look at the histogram above and try and pull some potential follow-up threads out of it, and I'll pose a couple in the form of null hypotheses.
+
+* Very few NYPD incidents occur during morning commute hours (5 - 8am).
+* NYPD incidents begin to pick up steadily in the evenings.
+* NYPD incidents drop off dramatically from 3am to 4am.
+* The most frequent time a NYPD incident occurs is between midnight and 1am.
+
+That last hypothesis will come up again in the bias section of this report as a potential source of data error. But for now, we're going to go a slightly different direction.
+
+## Visualization 2: Distribution of Incidents by Time by Borough
+
+In short, does this general pattern hold when we're looking in different boroughs? Let's start by taking a look at Queens, specifically.
+
+```{r Queens histogram, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+NYPD_QUEENS <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR), subset = BORO == "QUEENS")
+attach(NYPD_QUEENS)
+hist(NYPD_QUEENS$HOUR, main="NYPD Incidents by Day in Queens", xlab="Hour of Day", ylab = "Number of Incidents Per Hour", col = "dark blue", border = "yellow", breaks = 24, ylim = c(0, 4000), xlim = c(0, 24), xaxp = c(0, 24, 12))
+```
+
+Hey-o! Creating a new dataframe which filters by the field BORO works like a charm (see the code), but this chart isn't particularly helpful. To get to our second visualization, let's do a few things.
+
+1. Create a dataframe for the other four boroughs, and call them in a plot.
+2. Use line plots so we can better show the overlap between boroughs.
+3. Standardize our vertical axis, given we're splitting the total number of incidents by five, and the boroughs may have very different levels of shooting incidents.
+
+```{r borough density plot, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+NYPD_BROOKLYN <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR), subset = BORO == "BROOKLYN")
+NYPD_BRONX <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR), subset = BORO == "BRONX")
+NYPD_MANHATTAN <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR), subset = BORO == "MANHATTAN")
+NYPD_STATEN_ISLAND <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR), subset = BORO == "STATEN ISLAND")
+plot(density(NYPD_QUEENS$HOUR), col='red', main = "Distribution of Incidents by Hour, by Borough", xlab = "Hour of Day", ylab = "Percent of Incidents in Borough", xlim = c(0, 24), xaxp = c(0, 24, 12)) 
+lines(density(NYPD_BRONX$HOUR), col='blue')
+lines(density(NYPD_BROOKLYN$HOUR), col='green')
+lines(density(NYPD_MANHATTAN$HOUR), col='yellow')
+lines(density(NYPD_STATEN_ISLAND$HOUR), col='black')
+legend("top", legend=c("Queens", "Bronx", "Brooklyn", "Manhattan", "Staten Island"), col=c("red", "blue", "green", "yellow", "black"), lty=1, cex=0.8)
+
+```
+
+Would you look at that? It appears that, when it comes to the distribution of incidents by time of day, this general pattern does hold thorughout our five boroughs. ALthough we have several differences, none would be large enough to make substantial policy choices based off of them.
+
+
+```{r month density plot, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+NYPD_JAN <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "1")
+NYPD_FEB <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "2")
+NYPD_MAR <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "3")
+NYPD_APR <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "4")
+NYPD_MAY <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "5")
+NYPD_JUN <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "6")
+NYPD_JUL <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "7")
+NYPD_AUG <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "8")
+NYPD_SEP <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "9")
+NYPD_OCT <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "10")
+NYPD_NOV <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "11")
+NYPD_DEC <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = MONTH == "12")
+plot(density(NYPD_JAN$HOUR), col='red', main = "Distribution of Incidents by Hour, by Month", xlab = "Hour of Day", ylab = "Percent of Incidents in Month", xlim = c(0, 24), xaxp = c(0, 24, 12), ylim = c(0, 0.08)) 
+lines(density(NYPD_FEB$HOUR), col='blue')
+lines(density(NYPD_MAR$HOUR), col='green')
+lines(density(NYPD_APR$HOUR), col='yellow')
+lines(density(NYPD_MAY$HOUR), col='black')
+lines(density(NYPD_JUN$HOUR), col='blue')
+lines(density(NYPD_JUL$HOUR), col='green')
+lines(density(NYPD_AUG$HOUR), col='yellow')
+lines(density(NYPD_SEP$HOUR), col='black')
+lines(density(NYPD_OCT$HOUR), col='blue')
+lines(density(NYPD_NOV$HOUR), col='green')
+lines(density(NYPD_DEC$HOUR), col='yellow')
+legend("top", legend=c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"), col=c("red", "blue", "green", "yellow", "black", "blue", "green", "yellow", "black", "blue", "green", "yellow"), lty=1, cex=0.8)
+```
+
+```{r month focused density plot, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+plot(density(NYPD_FEB$HOUR), col='blue', main = "Distribution of Incidents by Hour, by Month (Focused View)", xlab = "Hour of Day", ylab = "Percent of Incidents in Month", xlim = c(0, 24), xaxp = c(0, 24, 12), ylim = c(0, 0.08)) 
+lines(density(NYPD_MAR$HOUR), col='purple')
+lines(density(NYPD_JUL$HOUR), col='red')
+lines(density(NYPD_AUG$HOUR), col='orange')
+legend("top", legend=c("February", "March", "July", "August"), col=c("blue", "purple", "red", "orange"), lty=1, cex=0.8)
+```
+
+```{r year density plot, echo = TRUE, eval = TRUE, warning=FALSE, message=FALSE}
+NYPD_2006 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2006")
+NYPD_2007 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2007")
+NYPD_2008 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2008")
+NYPD_2009 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2009")
+NYPD_2010 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2010")
+NYPD_2011 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2011")
+NYPD_2012 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2012")
+NYPD_2013 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2013")
+NYPD_2014 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2014")
+NYPD_2015 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2015")
+NYPD_2016 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2016")
+NYPD_2017 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2017")
+NYPD_2018 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2018")
+NYPD_2019 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2019")
+NYPD_2020 <- subset(NYPD_data_simpl, select = c(BORO, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, PRECINCT, HOUR, MONTH, YEAR), subset = YEAR == "2020")
+plot(density(NYPD_2006$HOUR), col='red', main = "Distribution of Incidents by Hour, by Year", xlab = "Hour of Day", ylab = "Percent of Incidents in Year", xlim = c(0, 24), xaxp = c(0, 24, 12), ylim = c(0, 0.08)) 
+lines(density(NYPD_2006$HOUR), col='blue')
+lines(density(NYPD_2007$HOUR), col='green')
+lines(density(NYPD_2008$HOUR), col='yellow')
+lines(density(NYPD_2009$HOUR), col='black')
+lines(density(NYPD_2010$HOUR), col='blue')
+lines(density(NYPD_2011$HOUR), col='green')
+lines(density(NYPD_2012$HOUR), col='yellow')
+lines(density(NYPD_2013$HOUR), col='black')
+lines(density(NYPD_2014$HOUR), col='blue')
+lines(density(NYPD_2015$HOUR), col='green')
+lines(density(NYPD_2016$HOUR), col='yellow')
+lines(density(NYPD_2017$HOUR), col='blue')
+lines(density(NYPD_2018$HOUR), col='green')
+lines(density(NYPD_2019$HOUR), col='yellow')
+lines(density(NYPD_2020$HOUR), col='black')
+legend("top", legend=c("2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020"), col=c("red", "blue", "green", "yellow", "black", "blue", "green", "yellow", "black", "blue", "green", "yellow", "blue", "green", "yellow", "black"), lty=1, cex=0.8)
+```
+
+# Project Step 4: Bias Identification
+In conclusion, we can see that there is a general pattern to when incidents are more likely or less likely to occur in the context of our data, which is for the NYPD specifically between the years 2006 and 2020. Would we like to go and make budgetary/policy/regulatory decisions based off of these analyses?
+
+**Absolutely not.**
+
+Why is that? First, we simplified this analysis extremely. Although we did break down our primary analysis by borough, we aren't taking into account many factors including:
+
+* Type of incident (is this property crime? Violent crime? Is it a false call?)
+* More specific location (beyond borough)
+* Was this the time of the call or of the incident itself?
+
+But second, and more important, are the potential sources of bias in the data itself. I will give two examples:
+
+1. As I referenced in an above section, there was this pattern of having the most incidents occur between 12 midnight and 1am. While this *could* be a true pattern, this could also be the result of bias in the data. How is that? In frequency data, when one value towers above the rest **and** it is a round/minimum/maximum/common value, it could be that when it comes to data intake, this is the default value. That is, if an officer or someone at NYPD logs a shooting incident into the database and doesn't provide any data for the "Time" field, the system would prefer to have a default value rather than a blank field, and so it assigns the default. This could very possibly be the case for this dataset, given just how many incidents (proportionally) occur during this hour. There is some more investigation we can do within the dataset itself to see if this trend may be happening, but the only way we would know for sure is to look at dataset documentation.
+2. The second source of bias is not knowing how thoroughly this dataset covers the actual universe of shooting incidents in New York City. As even the name of the dataset implies, this is a dataset which includes shooting incidents *which garnered a response from NYPD*, in whatever form. Therefore, to say that shooting incidents occur at certain times of day or in certain boroughs based on this dataset alone ignores two factors. First, that there are shooting incidents that are not logged in the database, and are therefore a source of bias. Second, that there could already be policy choices in place (about where police patrol/respond to incidents more quickly) which present bias into this dataset.
+
+There is also the possibility of personal bias. Because of my poltical leanings, I could tend to think that this dataset is not representative, as was mentioned above. This must be mitigated by strong fidelity to the outcomes of the dataset, and further exploration where other questions are warranted.
+
+While we have conducted some careful analyses on one aspect of this dataset today, it is important to realize the limitations not just of the analysis, but of the dataset itself. 
+
+```{r echo = TRUE, eval = TRUE}
+sessionInfo()
+```
+
